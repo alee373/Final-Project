@@ -1,0 +1,237 @@
+---
+title: "LeeFinalProject"
+author: "Andrew Lee"
+date: "2025-12-10"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+
+library(ggplot2) 
+library(dplyr) 
+library(readr) 
+library(janitor) 
+library(ggthemes)
+library(plotly) 
+library(caTools)
+
+```
+
+```{r}
+
+passing_data <- read.csv("passing_cleaned.csv")
+
+```
+
+```{r}
+
+head(passing_data)
+summary(passing_data)
+str(passing_data)
+cat("\n--- Missing Values Check ---\n")
+print(colSums(is.na(passing_data)))
+
+```
+
+```{r}
+
+yearly_summary <- passing_data %>%
+  group_by(Year) %>%
+  summarise(
+    Total_Att = sum(Att, na.rm = TRUE),
+    Avg_YA = mean(Y.A, na.rm = TRUE),
+    Avg_Rate = mean(Rate, na.rm = TRUE),
+  ) %>%
+  ungroup()
+
+head(yearly_summary)
+
+
+```
+
+```{r}
+
+continuous_vars <- c("Att", "Y.A", "Rate") 
+
+calculate_summary_stats <- function(data, column) {
+  data %>%
+    summarise(
+      Mean = mean(.data[[column]], na.rm = TRUE),
+      Median = median(.data[[column]], na.rm = TRUE),
+      Variance = var(.data[[column]], na.rm = TRUE),
+      SD = sd(.data[[column]], na.rm = TRUE),
+      .by = NULL 
+    ) %>%
+    mutate(Variable = column, .before = 1)
+}
+
+continuous_summary <- bind_rows(lapply(continuous_vars, calculate_summary_stats, data = passing_data))
+
+print(continuous_summary)
+
+```
+
+```{r}
+
+yearly_summary$Year <- as.numeric(yearly_summary$Year)
+
+plot_att_year <- ggplot(yearly_summary, aes(x = Year, y = Total_Att)) +
+  geom_line(color = "darkblue", linewidth = 1) +
+  geom_point(color = "darkblue") +
+  geom_smooth(method = "lm", se = FALSE, color = "lightblue", linetype = "dashed") +
+  labs(
+    title = "Trend of Total Attempts Over Years",
+    x = "Year",
+    y = "Total Attempts (Att)"
+  ) +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+print(plot_att_year)
+
+
+plot_ya_year <- ggplot(yearly_summary, aes(x = Year, y = Avg_YA)) +
+  geom_line(color = "darkgreen", linewidth = 1) +
+  geom_point(color = "darkgreen") +
+  geom_smooth(method = "lm", se = FALSE, color = "lightgreen", linetype = "dashed") +
+  labs(
+    title = "Trend of Average Yards per Attempt (Y.A) Over Years",
+    x = "Year",
+    y = "Average Y.A"
+  ) +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+print(plot_ya_year)
+
+
+plot_rate_year <- ggplot(yearly_summary, aes(x = Year, y = Avg_Rate)) +
+  geom_line(color = "darkred", linewidth = 1) +
+  geom_point(color = "darkred") +
+  geom_smooth(method = "lm", se = FALSE, color = "pink", linetype = "dashed") +
+  labs(
+    title = "Trend of Average Passer Rating (Rate) Over Years",
+    x = "Year",
+    y = "Average Rate"
+  ) +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+print(plot_rate_year)
+
+```
+
+```{r}
+
+cor_data <- passing_data %>% 
+  select(Att, Y.A, Rate)
+
+cat("\n--- Pearson Correlation Matrix ---\n")
+pearson_cor <- cor(cor_data, use = "pairwise.complete.obs", method = "pearson")
+print(pearson_cor)
+
+cat("\n--- Spearman Correlation Matrix ---\n")
+spearman_cor <- cor(cor_data, use = "pairwise.complete.obs", method = "spearman")
+print(spearman_cor)
+
+```
+
+```{r}
+
+cat("\n--- Time Series Regression: Avg Rate vs. Year (2001-2023) ---\n")
+
+trend_model_rate <- lm(Avg_Rate ~ Year, data = yearly_summary)
+
+print(summary(trend_model_rate))
+
+cat("\n--- Time Series Regression: Total Attempts vs. Year (2001-2023) ---\n")
+
+trend_model_att <- lm(Total_Att ~ Year, data = yearly_summary)
+
+print(summary(trend_model_att))
+
+cat("n--- Time Series Regression: Avg Yards per Attempt (Y.A) vs. Year 
+  (2001-2023) ---\n")
+
+trend_model_ya <- lm(Avg_YA ~ Year, data = yearly_summary)
+
+print(summary(trend_model_ya))
+
+```
+
+```{r}
+
+mean_rate <- mean(passing_data$Rate, na.rm = TRUE)
+sd_rate <- sd(passing_data$Rate, na.rm = TRUE)
+n_rate <- sum(!is.na(passing_data$Rate)) 
+
+sem_rate <- sd_rate / sqrt(n_rate)
+
+alpha <- 0.05
+degrees_freedom <- n_rate - 1
+t_score <- qt(1 - alpha/2, df = degrees_freedom)
+
+lower_bound <- mean_rate - (t_score * sem_rate)
+upper_bound <- mean_rate + (t_score * sem_rate)
+
+cat("\n--- 95% Confidence Interval for Overall Mean Passer Rating (Rate) ---\n")
+cat(paste("Mean Rate (Overall):", round(mean_rate, 2), "\n"))
+cat(paste("95% CI: [", round(lower_bound, 2), ", ", round(upper_bound, 2), "]\n"))
+
+```
+```{r}
+
+model_data <- passing_data %>%
+  select(Rate, Att, Y.A) %>%
+  na.omit() 
+
+set.seed(42) 
+
+split_index <- sample.split(model_data$Rate, SplitRatio = 0.70) 
+
+train_data <- subset(model_data, split_index == TRUE)
+test_data <- subset(model_data, split_index == FALSE)
+
+cat("Training Data Size:", nrow(train_data), "\n")
+cat("Testing Data Size:", nrow(test_data), "\n")
+
+```
+
+```{r}
+
+regression_model <- lm(Rate ~ Att + Y.A, data = train_data)
+
+cat("\n--- Linear Regression Model Summary ---\n")
+model_summary <- summary(regression_model)
+print(model_summary)
+
+```
+
+```{r}
+
+test_predictions <- predict(regression_model, newdata = test_data)
+
+calculate_test_rsq <- function(actual, predicted) {
+  sst <- sum((actual - mean(actual))^2)
+  sse <- sum((actual - predicted)^2)
+  rsq <- 1 - (sse / sst)
+  return(rsq)
+}
+
+calculate_rmse <- function(actual, predicted) {
+  rmse <- sqrt(mean((actual - predicted)^2))
+  return(rmse)
+}
+
+test_r_squared <- calculate_test_rsq(test_data$Rate, test_predictions)
+test_rmse <- calculate_rmse(test_data$Rate, test_predictions)
+
+cat("\n--- Model Performance on Test Set ---\n")
+cat(paste("Test R-squared:", round(test_r_squared, 4), "\n"))
+cat(paste("Root Mean Squared Error (RMSE):", round(test_rmse, 2), "\n"))
+
+```
